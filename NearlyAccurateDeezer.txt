@@ -1,0 +1,113 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+
+local plr = Players.LocalPlayer
+local char = plr.Character or plr.CharacterAdded:Wait()
+local hum = char:WaitForChild("Humanoid")
+local root = char:WaitForChild("HumanoidRootPart")
+local camera = workspace.CurrentCamera
+
+local HOSTILE_ID = "rbxassetid://76426640329474"
+local PASSIVE_IMAGE = "rbxassetid://85392007291966"
+local SPAWN_URL = "https://github.com/beanzjsjwj/doors-monsters-models/raw/refs/heads/main/DeezerSpawned.mp3"
+local SCARE_URL = "https://github.com/beanzjsjwj/doors-monsters-models/raw/refs/heads/main/DeezerJumpscare.mp3"
+local WAIT_TIME = 4.5 -- seconds before he turns hostile
+
+local function LoadSound(url, name)
+local ok, r = pcall(function()
+local f = name .. ".mp3"
+if not isfile(f) then writefile(f, game:HttpGet(url)) end
+return getcustomasset(f)
+end)
+if not ok then warn("[Deezer] sound failed:", name, r) end
+return ok and r or ""
+end
+
+local function SpawnHostile(cf)
+local m = game:GetObjects(HOSTILE_ID)[1]
+m.Parent = workspace
+if m:IsA("Model") and not m.PrimaryPart then
+m.PrimaryPart = m:FindFirstChildWhichIsA("BasePart", true)
+end
+m:PivotTo(cf)
+return m
+end
+
+local function SpawnPassive(cf)
+local p = Instance.new("Part")
+p.Anchored = true
+p.CanCollide = false
+p.CanQuery = false
+p.CanTouch = false
+p.Transparency = 1
+p.Size = Vector3.new(1, 1, 1)
+p.CFrame = cf
+p.Parent = workspace
+
+local bb = Instance.new("BillboardGui")
+bb.Size = UDim2.new(6.5, 0, 8, 0) -- width, height in studs
+bb.AlwaysOnTop = false
+bb.LightInfluence = 0
+bb.Adornee = p
+bb.Parent = p
+
+local img = Instance.new("ImageLabel")
+img.Size = UDim2.new(1, 0, 1, 0)
+img.BackgroundTransparency = 1
+img.Image = PASSIVE_IMAGE
+img.Parent = bb
+return p
+end
+
+print("[Deezer] start")
+
+local angle = math.rad(math.random(0, 359))
+local radius = math.random(8, 12)
+local basePos = root.Position + Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
+local baseCF = CFrame.new(basePos, Vector3.new(root.Position.X, basePos.Y, root.Position.Z))
+local passive = SpawnPassive(baseCF + Vector3.new(0, 1, 0))
+print("[Deezer] passive at", passive.Position, "you at", root.Position)
+
+local s = Instance.new("Sound")
+s.SoundId = LoadSound(SPAWN_URL, "DeezerSpawned")
+s.Volume = 2
+s.Parent = workspace
+s:Play()
+
+local looked = false
+local conn
+conn = RunService.RenderStepped:Connect(function()
+if not passive.Parent then return end
+local dir = (passive.Position - camera.CFrame.Position).Unit
+if camera.CFrame.LookVector:Dot(dir) > 0.85 then
+looked = true
+conn:Disconnect()
+print("[Deezer] looked at, despawning")
+task.delay(1, function()
+s:Stop()
+passive:Destroy()
+end)
+end
+end)
+
+task.delay(WAIT_TIME, function()
+if looked then return end
+conn:Disconnect()
+print("[Deezer] going hostile")
+passive:Destroy()
+
+local h = SpawnHostile(baseCF)
+hum:TakeDamage(1)
+
+local sc = Instance.new("Sound")
+sc.SoundId = LoadSound(SCARE_URL, "DeezerJumpscare")
+sc.Volume = 3
+sc.Parent = workspace
+sc:Play()
+
+local old = hum.WalkSpeed
+hum.WalkSpeed = 0.5
+TweenService:Create(hum, TweenInfo.new(5, Enum.EasingStyle.Linear), {WalkSpeed = old}):Play()
+task.delay(5, function() h:Destroy() end)
+end)
